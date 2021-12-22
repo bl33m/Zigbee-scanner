@@ -24,10 +24,18 @@ class MainListener():
 
     def device_joined(self, device):
         print(f"device joined: {device.get_signature}")
+        print(f"Model : {device.model} Manufacturer : {device.manufacturer}")
 
     def device_initialized(self, device, *, new=True):
-        print(f"Device Signature {device.get_signature}")
+        print(f"Model : {device.model}")
+        print(f"Manufacturer : {device.manufacturer}")
+        results = dict.fromkeys(['TARGET_IPADDR', 'SCAN_NAME', 'MODEL', 'VENDOR', 'SCAN_RESULT', 'SCAN_RESULT_DESC'])
+        results['TARGET_IPADDR'] = ""
+        results['SCAN_NAME'] = "Zigbee Scan"
+        results['MODEL'] = device.model
+        results['VENDOR'] = device.manufacturer
 
+    
     def attribute_updated(self, cluster, attribute, value):
         device = cluster.endpoint.device
         endpoint = cluster.endpoint
@@ -40,7 +48,7 @@ class MainListener():
 async def main():
     controller = await ControllerApplication.new(
         config = ControllerApplication.SCHEMA({
-            "database_path": "/home/pi/.config/bellows/app.db",
+            "database_path": "/home/bl33m/.config/bellows/app.db",
             "device": {
                 "path": "/dev/ttyUSB1",
                 "baudrate": 57600
@@ -61,7 +69,6 @@ async def main():
     await asyncio.sleep(120)
 
     await asyncio.get_running_loop().create_future()
-    
 
 if __name__ == "__main__":
     asyncio.run(main())
