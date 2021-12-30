@@ -1,74 +1,72 @@
 import argparse
 import asyncio
+import subprocess
 import time
 import sys
-import asyncio
 from argparse import ArgumentParser
 import pathlib
+import serial
+import sqlite3
 
-from bellows.ezsp import EZSP
 from bellows.zigbee.application import ControllerApplication
 
 from csv import DictWriter
 
 arg_parser = argparse.ArgumentParser(description = 'Enter your Zigbee hub serial path, and database file')
 
-#arg_parser = argparse.ArgumentParser("Zigbee_device_path", type=pathlib.Path,
+#   arg_parser = argparse.ArgumentParser("Zigbee_device_path", type=pathlib.Path,
 #                                    help="Device path of Z-Stick, /dev/tty...")
 args = arg_parser.parse_args()
 
-class MainListener():
 
-    def __init__(self, controller):
-        self.controller = controller
+async def getZigbeeDevices():
 
-    def device_joined(self, device):
-        print(f"device joined: {device.get_signature}")
-        print(f"Model : {device.model} Manufacturer : {device.manufacturer}")
+    results = dict.fromkeys(['TARGET_IPADDR', 'SCAN_NAME', 'MODEL', 'VENDOR', 'SCAN_RESULT', 'SCAN_RESULT_DESC'])
 
-    def device_initialized(self, device, *, new=True):
-        print(f"Model : {device.model}")
-        print(f"Manufacturer : {device.manufacturer}")
-        results = dict.fromkeys(['TARGET_IPADDR', 'SCAN_NAME', 'MODEL', 'VENDOR', 'SCAN_RESULT', 'SCAN_RESULT_DESC'])
-        results['TARGET_IPADDR'] = ""
-        results['SCAN_NAME'] = "Zigbee Scan"
-        results['MODEL'] = device.model
-        results['VENDOR'] = device.manufacturer
+    try:
+        controller = await ControllerApplication.new(
+            config = ControllerApplication.SCHEMA({
+                "database_path": "/home/bl33m/.config/bellows/app.db",
+                "device": {
+                    "path": "/dev/ttyUSB1",
+                    "baudrate": 57600
+                }
+            }),
+            auto_form = True,
+            start_radio = True,
+        )
 
-    
-    def attribute_updated(self, cluster, attribute, value):
-        device = cluster.endpoint.device
-        endpoint = cluster.endpoint
-        try:
-            print(f"attribute update {cluster.attributes[attribute][0]} {value / 100.0} {cluster.name}")
-        except Exception:
-            print(f"attr not supported by zcl {cluster} {attribute} {value}")
-
-
-async def main():
-    controller = await ControllerApplication.new(
-        config = ControllerApplication.SCHEMA({
-            "database_path": "/home/bl33m/.config/bellows/app.db",
-            "device": {
-                "path": "/dev/ttyUSB1",
-                "baudrate": 57600
-            }
-        }),
-        auto_form = True,
-        start_radio = True,
-    )
-
-    listener = MainListener(controller)
-    controller.add_listener(listener)
+    except (serial.serialutil.SerialException, sqlite3.OperationalError) as err:
+        print(f"{err}")
+        results['SCAN_RESULT'] = -1
+        results['SCAN_RESULT_DESC'] = "No hub found on specificed serial path"
+        return results
 
     for dev in controller.devices.values():
-        listener.device_initialized(dev, new=False)
+        print(f"Model : {dev.model}")
+        print(f"Manufacturer : {dev.manufacturer}")
+        results['TARGET_IPADDR'] = ""
+        results['SCAN_NAME'] = "Zigbee Scan"
+        results['MODEL'] = dev.model
+        results['VENDOR'] = dev.manufacturer
     
-    print("allow joins for 2 minutes")
-    await controller.permit(120)
-    await asyncio.sleep(120)
+    results['SCAN_RESULT'] = 1
+    results['SCAN_RESULT_DESCRIPTION'] = "Success"
 
-    await asyncio.get_running_loop().create_future()
+    return results
+
+
+def main():
+    test = subprocess.run(['sudo', 'fuser', '/dev/ttyUSB1'], capture_output=True)
+    if test.stdout != b'':
+        print("Zigbee hub is busy pleasy stop any processes using the Zigbee hub")
+        return
+    loop = asyncio.get_event_loop()
+    coroutine = getZigbeeDevices()
+    results = loop.run_until_complete(coroutine)
+    print(results)
+    return
+
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
